@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>비트스매시 클럽 (BeatSmash Club) 🎵</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Jua&family=Noto+Sans+KR:wght@500;700;900&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background: radial-gradient(circle at top, #311042 0%, #140826 55%, #070312 100%);
+            color: #ffffff;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+        }
+
+        .font-game {
+            font-family: 'Jua', sans-serif;
+        }
+
+        .btn-pop {
+            transition: transform 0.08s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.08s;
+            box-shadow: 0 5px 0 #9d174d, 0 10px 24px rgba(236, 72, 153, 0.4);
+        }
+        .btn-pop:active {
+            transform: translateY(5px) scale(0.97);
+            box-shadow: 0 0px 0 #9d174d;
+        }
+
+        @keyframes pulseGlow {
+            0%, 100% { box-shadow: 0 0 22px rgba(250, 204, 21, 0.55); }
+            50% { box-shadow: 0 0 38px rgba(244, 114, 182, 0.85); }
+        }
+        .overdrive-glow {
+            animation: pulseGlow 0.5s infinite alternate;
+        }
+
+        @keyframes judgementPop {
+            0% { transform: translate(-50%, -20%) scale(0.6); opacity: 0; }
+            30% { transform: translate(-50%, -50%) scale(1.18); opacity: 1; }
+            100% { transform: translate(-50%, -85%) scale(1); opacity: 0; }
+        }
+        .judgement-text {
+            position: absolute;
+            left: 50%;
+            top: 62%;
+            pointer-events: none;
+            animation: judgementPop 0.55s ease-out forwards;
+            z-index: 30;
+        }
+
+        .modal-bg {
+            background: rgba(9, 4, 20, 0.82);
+            backdrop-filter: blur(6px);
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col items-center justify-between p-2.5 sm:p-4">
+
+    <!-- Top Score & Song Selector Bar -->
+    <header class="w-full max-w-md bg-white/10 backdrop-blur-md border border-white/15 rounded-3xl px-4 py-2.5 shadow-xl flex items-center justify-between gap-2 z-10">
+        <div class="flex items-center gap-2.5">
+            <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-pink-500 via-amber-400 to-cyan-400 flex items-center justify-center text-xl shadow-md">
+                🎧
+            </div>
+            <div>
+                <div class="flex items-center gap-1.5">
+                    <span class="font-game text-base sm:text-lg text-pink-300">비트스매시 클럽</span>
+                    <span id="rank-badge" class="text-[10px] font-black bg-amber-400/20 text-amber-300 border border-amber-300/40 px-2 py-0.5 rounded-full">ROOKIE</span>
+                </div>
+                <div class="flex items-center gap-3 text-xs font-bold text-purple-200/80">
+                    <span>SCORE: <strong id="hud-score" class="text-white text-sm">0</strong></span>
+                    <span>BEST: <strong id="hud-best" class="text-amber-300">0</strong></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-1.5">
+            <button onclick="openModal('guide-modal')" class="px-2.5 py-1.5 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/15 text-pink-200 font-game text-xs transition">
+                규칙
+            </button>
+            <button id="sound-btn" onclick="toggleSound()" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-sm transition">
+                🔊
+            </button>
+        </div>
+    </header>
+
+    <!-- Combo & Fever Status Strip -->
+    <div class="w-full max-w-md flex items-center justify-between px-3 py-1 my-1 z-10">
+        <div class="flex items-baseline gap-1.5">
+            <span id="hud-combo" class="font-game text-2xl sm:text-3xl text-amber-300 drop-shadow">0</span>
+            <span class="font-game text-xs text-pink-200 tracking-wider">COMBO</span>
+        </div>
+
+        <div id="fever-pill" class="hidden bg-gradient-to-r from-amber-400 to-pink-500 text-slate-950 font-black text-[11px] px-3 py-0.5 rounded-full shadow animate-bounce">
+            🔥 FEVER x2 보너스!
+        </div>
+
+        <div class="text-right">
+            <span class="text-[10px] font-bold text-purple-200/70 mr-1">정확도</span>
+            <strong id="hud-acc" class="text-xs font-black text-cyan-300">100%</strong>
+        </div>
+    </div>
+
+    <!-- Main 4-Lane Rhythm Stage -->
+    <main id="stage-wrapper" class="flex-1 w-full max-w-md relative rounded-[2rem] overflow-hidden border-2 border-white/20 bg-slate-950/85 shadow-2xl min-h-0">
+        <canvas id="rhythmCanvas" class="w-full h-full block"></canvas>
+
+        <!-- Start Overlay -->
+        <div id="start-overlay" class="absolute inset-0 bg-slate-950/85 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-20">
+            <span class="text-xs font-black tracking-widest text-amber-300 bg-amber-400/15 border border-amber-300/30 px-3.5 py-1 rounded-full mb-3">
+                4-LANE RHYTHM & COMBO ACTION
+            </span>
+            <h1 class="font-game text-4xl sm:text-5xl text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-amber-300 to-cyan-300 mb-2">
+                비트스매시 클럽! 🎵
+            </h1>
+            <p class="text-xs sm:text-sm text-purple-100/80 max-w-xs mb-5 leading-relaxed">
+                떨어지는 네온 비트가 판정선에 닿을 때 맞춰 치세요!<br>
+                손가락 터치나 <strong class="text-amber-300">D · F · J · K</strong> 키보드로 신나는 콤보를 이어가세요.
+            </p>
+
+            <!-- Tempo Mode Selector -->
+            <div class="grid grid-cols-3 gap-2 w-full max-w-xs mb-5">
+                <button onclick="selectTempo('chill')" id="tempo-chill" class="tempo-btn py-2 rounded-xl font-game text-xs bg-white/10 text-purple-200 border border-white/15 transition">
+                    🌸 이지 BPM
+                </button>
+                <button onclick="selectTempo('club')" id="tempo-club" class="tempo-btn py-2 rounded-xl font-game text-xs bg-pink-500 text-white border border-pink-300 shadow-md transition">
+                    🔥 클럽 BPM
+                </button>
+                <button onclick="selectTempo('hyper')" id="tempo-hyper" class="tempo-btn py-2 rounded-xl font-game text-xs bg-white/10 text-purple-200 border border-white/15 transition">
+                    ⚡ 하이퍼 BPM
+                </button>
+            </div>
+
+            <button onclick="startSession()" class="btn-pop w-full max-w-xs py-3.5 rounded-2xl bg-gradient-to-r from-pink-500 via-rose-500 to-amber-400 text-white font-game text-xl tracking-wider">
+                비트 시작하기! 🎶
+            </button>
+        </div>
+    </main>
+
+    <!-- Bottom 4 Tactile Lane Pads -->
+    <footer class="w-full max-w-md grid grid-cols-4 gap-2 mt-2 z-10">
+        <button id="pad-0" onpointerdown="hitLane(0)" class="py-3 rounded-2xl bg-pink-500/25 active:bg-pink-500/60 border-2 border-pink-400/50 text-pink-200 font-game text-lg flex flex-col items-center justify-center transition">
+            <span>💖</span>
+            <span class="text-[10px] font-sans font-black opacity-80">LANE 1 [D]</span>
+        </button>
+        <button id="pad-1" onpointerdown="hitLane(1)" class="py-3 rounded-2xl bg-amber-400/25 active:bg-amber-400/60 border-2 border-amber-300/50 text-amber-200 font-game text-lg flex flex-col items-center justify-center transition">
+            <span>⭐</span>
+            <span class="text-[10px] font-sans font-black opacity-80">LANE 2 [F]</span>
+        </button>
+        <button id="pad-2" onpointerdown="hitLane(2)" class="py-3 rounded-2xl bg-cyan-400/25 active:bg-cyan-400/60 border-2 border-cyan-300/50 text-cyan-200 font-game text-lg flex flex-col items-center justify-center transition">
+            <span>💎</span>
+            <span class="text-[10px] font-sans font-black opacity-80">LANE 3 [J]</span>
+        </button>
+        <button id="pad-3" onpointerdown="hitLane(3)" class="py-3 rounded-2xl bg-purple-400/25 active:bg-purple-400/60 border-2 border-purple-300/50 text-purple-200 font-game text-lg flex flex-col items-center justify-center transition">
+            <span>🎵</span>
+            <span class="text-[10px] font-sans font-black opacity-80">LANE 4 [K]</span>
+        </button>
+    </footer>
+
+    <!-- ================= MODAL: GUIDE ================= -->
+    <div id="guide-modal" class="hidden fixed inset-0 modal-bg z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-white/20 rounded-3xl max-w-sm w-full p-5 shadow-2xl">
+            <div class="flex justify-between items-center mb-3">
+                <h2 class="font-game text-xl text-pink-300">비트스매시 클럽 규칙</h2>
+                <button onclick="closeModal('guide-modal')" class="w-8 h-8 rounded-full bg-white/10 text-slate-300 font-bold">✕</button>
+            </div>
+            <div class="space-y-2.5 text-xs text-slate-200 leading-relaxed">
+                <div class="bg-white/5 p-3 rounded-2xl border border-white/10">
+                    <strong class="text-amber-300 block mb-0.5">🎯 타이밍 판정</strong>
+                    노트가 하단 <strong>네온 판정선</strong>에 닿을 때 해당 레인 패드를 누르거나 키보드(<span class="text-white font-bold">D, F, J, K</span>)를 치세요!
+                </div>
+                <div class="bg-white/5 p-3 rounded-2xl border border-white/10">
+                    <strong class="text-pink-300 block mb-0.5">🔥 피버 모드 & 생명력</strong>
+                    • <strong>10콤보 이상</strong> 달성 시 점수 2배 <strong>FEVER</strong> 발동!<br>
+                    • 노트를 놓치면 라이프가 줄어들며, 60초 동안 버티거나 최고 점수에 도전하세요.
+                </div>
+                <div class="bg-rose-950/50 p-3 rounded-2xl border border-rose-500/40">
+                    <strong class="text-rose-400 block mb-0.5">⚠️ 톱니 함정 트릭 주의!</strong>
+                    해당 레인과 똑같은 색깔의 <strong>톱니 모양(⚙️)</strong>이 떨어질 때는 절대 누르지 말고 지나가게 두세요! 색깔이 같아 헷갈리기 쉽지만, 톱니를 누르면 <strong>목숨이 즉시 0이 되어 바로 게임 오버</strong>됩니다.
+                </div>
+            </div>
+            <button onclick="closeModal('guide-modal')" class="btn-pop w-full py-3 rounded-2xl bg-gradient-to-r from-pink-500 to-amber-400 text-white font-game text-base mt-4">
+                알겠어요!
+            </button>
+        </div>
+    </div>
+
+    <!-- ================= MODAL: SESSION RESULT ================= -->
+    <div id="result-modal" class="hidden fixed inset-0 modal-bg z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border-2 border-pink-400/40 rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl">
+            <div class="text-4xl mb-2">🎉</div>
+            <h2 id="result-title" class="font-game text-3xl text-amber-300">스테이지 클리어!</h2>
+            <p class="text-xs text-slate-400 mt-1">오늘의 리듬 콤보 기록입니다.</p>
+
+            <div class="bg-white/5 border border-white/10 rounded-2xl p-4 my-4 space-y-2">
+                <div class="text-xs text-slate-400">최종 점수</div>
+                <div id="final-score" class="font-game text-4xl text-white">0</div>
+                <div id="new-best-banner" class="hidden text-xs font-black text-amber-300">👑 최고 기록 달성!</div>
+                <div class="pt-2 border-t border-white/10 grid grid-cols-2 text-xs text-slate-300">
+                    <div>최대 콤보: <strong id="final-max-combo" class="text-pink-300">0</strong></div>
+                    <div>정확도: <strong id="final-acc" class="text-cyan-300">100%</strong></div>
+                </div>
+            </div>
+
+            <button onclick="startSession(); closeModal('result-modal');" class="btn-pop w-full py-3.5 rounded-2xl bg-gradient-to-r from-pink-500 to-amber-400 text-white font-game text-xl">
+                다시 플레이! 🎶
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. Musical Synth Engine (Tone.js)
+        // ==========================================
+        let soundOn = true;
+        let noteSynth = null;
+        const LANE_NOTES = ['C5', 'E5', 'G5', 'B5'];
+        const LANE_COLORS = ['#f472b6', '#fbbf24', '#22d3ee', '#c084fc'];
+
+        function initSynth() {
+            if (!noteSynth && typeof Tone !== 'undefined') {
+                noteSynth = new Tone.PolySynth(Tone.Synth, {
+                    oscillator: { type: 'sine' },
+                    envelope: { attack: 0.005, decay: 0.12, sustain: 0.05, release: 0.18 }
+                }).toDestination();
+                noteSynth.volume.value = -8;
+            }
+        }
+
+        function playLaneNote(laneIdx, isFever = false) {
+            if (!soundOn) return;
+            try {
+                initSynth();
+                if (Tone.context.state !== 'running') Tone.context.resume();
+                const now = Tone.now();
+                const note = LANE_NOTES[laneIdx % LANE_NOTES.length];
+                if (isFever) {
+                    noteSynth.triggerAttackRelease([note, 'C6'], '16n', now);
+                } else {
+                    noteSynth.triggerAttackRelease(note, '16n', now);
+                }
+            } catch (e) {}
+        }
+
+        function playMissSound() {
+            if (!soundOn) return;
+            try {
+                initSynth();
+                if (Tone.context.state !== 'running') Tone.context.resume();
+                noteSynth.triggerAttackRelease('A2', '16n', Tone.now());
+            } catch (e) {}
+        }
+
+        function playSpikeTrapSound() {
+            if (!soundOn) return;
+            try {
+                initSynth();
+                if (Tone.context.state !== 'running') Tone.context.resume();
+                const now = Tone.now();
+                noteSynth.triggerAttackRelease(['G2', 'F#2'], '8n', now);
+                noteSynth.triggerAttackRelease(['C2', 'B1'], '4n', now + 0.12);
+            } catch (e) {}
+        }
+
+        function toggleSound() {
+            soundOn = !soundOn;
+            document.getElementById('sound-btn').textContent = soundOn ? '🔊' : '🔇';
+        }
+
+        // ==========================================
+        // 2. Canvas & Rhythm State
+        // ==========================================
+        const canvas = document.getElementById('rhythmCanvas');
+        const ctx = canvas.getContext('2d');
+        const stageWrapper = document.getElementById('stage-wrapper');
+
+        let width = 380;
+        let height = 460;
+        let hitLineY = 390;
+
+        function resizeStage() {
+            const rect = stageWrapper.getBoundingClientRect();
+            width = rect.width;
+            height = rect.height;
+            canvas.width = width;
+            canvas.height = height;
+            hitLineY = height - 64;
+        }
+        window.addEventListener('resize', resizeStage);
+
+        let tempoMode = 'club';
+        let bestScore = parseInt(localStorage.getItem('beatSmashBest') || '0');
+        document.getElementById('hud-best').textContent = bestScore.toLocaleString();
+
+        let isPlaying = false;
+        let score = 0;
+        let combo = 0;
+        let maxCombo = 0;
+        let hits = 0;
+        let misses = 0;
+        let lives = 10;
+        let remainingTime = 60;
+        let lastClockTick = 0;
+        let lastNoteSpawn = 0;
+
+        let notes = [];
+        let sparks = [];
+        let laneFlash = [0, 0, 0, 0];
+        let instantDeathBySpike = false;
+
+        const TEMPO_CONFIG = {
+            chill: { speed: 4.2, spawnMs: 680 },
+            club: { speed: 5.8, spawnMs: 490 },
+            hyper: { speed: 7.4, spawnMs: 360 }
+        };
+
+        function selectTempo(mode) {
+            tempoMode = mode;
+            document.querySelectorAll('.tempo-btn').forEach(btn => {
+                btn.className = 'tempo-btn py-2 rounded-xl font-game text-xs bg-white/10 text-purple-200 border border-white/15 transition';
+            });
+            const active = document.getElementById(`tempo-${mode}`);
+            active.className = 'tempo-btn py-2 rounded-xl font-game text-xs bg-pink-500 text-white border border-pink-300 shadow-md transition';
+        }
+
+        // Keyboard D F J K support
+        const KEY_TO_LANE = { d: 0, f: 1, j: 2, k: 3 };
+        window.addEventListener('keydown', (e) => {
+            const k = e.key.toLowerCase();
+            if (KEY_TO_LANE[k] !== undefined && isPlaying) {
+                const lane = KEY_TO_LANE[k];
+                const pad = document.getElementById(`pad-${lane}`);
+                pad.classList.add('scale-95', 'brightness-125');
+                hitLane(lane);
+            }
+        });
+        window.addEventListener('keyup', (e) => {
+            const k = e.key.toLowerCase();
+            if (KEY_TO_LANE[k] !== undefined) {
+                const pad = document.getElementById(`pad-${KEY_TO_LANE[k]}`);
+                pad.classList.remove('scale-95', 'brightness-125');
+            }
+        });
+
+        // Canvas direct lane tap support
+        canvas.addEventListener('pointerdown', (e) => {
+            if (!isPlaying) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const lane = Math.min(3, Math.max(0, Math.floor((x / width) * 4)));
+            hitLane(lane);
+        });
+
+        // ==========================================
+        // 3. Gameplay & Judgement Logic
+        // ==========================================
+        function startSession() {
+            initSynth();
+            resizeStage();
+            document.getElementById('start-overlay').classList.add('hidden');
+            isPlaying = true;
+            score = 0;
+            combo = 0;
+            maxCombo = 0;
+            hits = 0;
+            misses = 0;
+            lives = 10;
+            remainingTime = 60;
+            instantDeathBySpike = false;
+            lastClockTick = Date.now();
+            lastNoteSpawn = Date.now() - 250;
+            notes = [];
+            sparks = [];
+            stageWrapper.classList.remove('overdrive-glow');
+            document.getElementById('fever-pill').classList.add('hidden');
+            updateHUD();
+        }
+
+        function spawnNote() {
+            const lane = Math.floor(Math.random() * 4);
+            // Avoid spawning exact same lane back-to-back too often
+            const last = notes[notes.length - 1];
+            const finalLane = (last && last.lane === lane && Math.random() < 0.65)
+                ? (lane + 1) % 4
+                : lane;
+
+            // Sharp spike trap trick (~18% chance after initial notes)
+            const isSpike = Math.random() < 0.18;
+
+            const cfg = TEMPO_CONFIG[tempoMode];
+            notes.push({
+                lane: finalLane,
+                y: -24,
+                speed: cfg.speed + Math.min(2.2, (60 - remainingTime) * 0.03),
+                radius: Math.max(18, Math.min(26, (width / 4) * 0.28)),
+                isSpike,
+                active: true
+            });
+        }
+
+        function triggerSpikeInstantDeath(lane) {
+            const laneWidth = width / 4;
+            const centerX = laneWidth * lane + laneWidth / 2;
+            combo = 0;
+            lives = 0;
+            instantDeathBySpike = true;
+            playSpikeTrapSound();
+            spawnSparks(centerX, hitLineY, LANE_COLORS[lane], 24);
+            showJudgement('SAW TRAP! 💀', LANE_COLORS[lane]);
+            updateHUD();
+            finishSession(false, true);
+        }
+
+        function hitLane(lane) {
+            if (!isPlaying) return;
+            laneFlash[lane] = 1;
+
+            // Find closest note in this lane near hitLineY
+            let bestIdx = -1;
+            let bestDiff = Infinity;
+
+            for (let i = 0; i < notes.length; i++) {
+                const n = notes[i];
+                if (!n.active || n.lane !== lane) continue;
+                const diff = Math.abs(n.y - hitLineY);
+                if (diff < bestDiff) {
+                    bestDiff = diff;
+                    bestIdx = i;
+                }
+            }
+
+            const laneWidth = width / 4;
+            const centerX = laneWidth * lane + laneWidth / 2;
+            const isFever = combo >= 10;
+
+            if (bestIdx !== -1 && bestDiff <= 58) {
+                const targetNote = notes[bestIdx];
+
+                // Hitting a sharp spike note immediately depletes all lives!
+                if (targetNote.isSpike) {
+                    targetNote.active = false;
+                    notes.splice(bestIdx, 1);
+                    triggerSpikeInstantDeath(lane);
+                    return;
+                }
+
+                notes[bestIdx].active = false;
+                notes.splice(bestIdx, 1);
+
+                const isPerfect = bestDiff <= 22;
+                combo++;
+                maxCombo = Math.max(maxCombo, combo);
+                hits++;
+
+                const basePts = isPerfect ? 150 : 80;
+                const comboBonus = Math.min(200, combo * 5);
+                const earned = (basePts + comboBonus) * (isFever ? 2 : 1);
+                score += earned;
+
+                playLaneNote(lane, combo >= 10);
+                spawnSparks(centerX, hitLineY, LANE_COLORS[lane], isPerfect ? 14 : 7);
+                showJudgement(isPerfect ? 'PERFECT!' : 'GREAT!', isPerfect ? '#fde047' : '#67e8f9');
+                updateHUD();
+            } else {
+                // Empty tap penalty
+                combo = 0;
+                playMissSound();
+                updateHUD();
+            }
+        }
+
+        function showJudgement(label, color) {
+            const el = document.createElement('div');
+            el.className = 'judgement-text font-game text-2xl sm:text-3xl drop-shadow';
+            el.style.color = color;
+            el.textContent = label;
+            stageWrapper.appendChild(el);
+            setTimeout(() => el.remove(), 550);
+        }
+
+        function spawnSparks(x, y, color, count) {
+            for (let i = 0; i < count; i++) {
+                const ang = Math.random() * Math.PI * 2;
+                const spd = Math.random() * 4.5 + 1.5;
+                sparks.push({
+                    x, y,
+                    vx: Math.cos(ang) * spd,
+                    vy: Math.sin(ang) * spd - 1.5,
+                    color,
+                    life: 1
+                });
+            }
+        }
+
+        function updateHUD() {
+            document.getElementById('hud-score').textContent = score.toLocaleString();
+            document.getElementById('hud-combo').textContent = combo;
+
+            const total = hits + misses;
+            const acc = total > 0 ? Math.round((hits / total) * 100) : 100;
+            document.getElementById('hud-acc').textContent = `${acc}%`;
+
+            const rankEl = document.getElementById('rank-badge');
+            if (score >= 12000) rankEl.textContent = 'SUPERSTAR';
+            else if (score >= 6000) rankEl.textContent = 'CLUB DJ';
+            else if (score >= 2500) rankEl.textContent = 'GROOVE';
+            else rankEl.textContent = 'ROOKIE';
+
+            if (combo >= 10) {
+                stageWrapper.classList.add('overdrive-glow');
+                document.getElementById('fever-pill').classList.remove('hidden');
+            } else {
+                stageWrapper.classList.remove('overdrive-glow');
+                document.getElementById('fever-pill').classList.add('hidden');
+            }
+
+            if (score > bestScore) {
+                bestScore = score;
+                localStorage.setItem('beatSmashBest', bestScore.toString());
+                document.getElementById('hud-best').textContent = bestScore.toLocaleString();
+            }
+        }
+
+        function finishSession(clearedAll, hitSpike = false) {
+            isPlaying = false;
+            stageWrapper.classList.remove('overdrive-glow');
+            document.getElementById('fever-pill').classList.add('hidden');
+
+            document.getElementById('result-title').textContent = hitSpike
+                ? '톱니 함정에 걸렸어요! 💀'
+                : (clearedAll ? '스테이지 클리어!' : '비트 중단!');
+            document.getElementById('final-score').textContent = score.toLocaleString();
+            document.getElementById('final-max-combo').textContent = `${maxCombo} COMBO`;
+
+            const total = hits + misses;
+            const acc = total > 0 ? Math.round((hits / total) * 100) : 100;
+            document.getElementById('final-acc').textContent = `${acc}%`;
+
+            if (score >= bestScore && score > 0) {
+                document.getElementById('new-best-banner').classList.remove('hidden');
+            } else {
+                document.getElementById('new-best-banner').classList.add('hidden');
+            }
+            document.getElementById('result-modal').classList.remove('hidden');
+        }
+
+        function openModal(id) {
+            document.getElementById(id).classList.remove('hidden');
+        }
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+
+        // ==========================================
+        // 4. Animation & Render Loop
+        // ==========================================
+        function tick() {
+            if (isPlaying) {
+                const now = Date.now();
+                if (now - lastClockTick >= 1000) {
+                    lastClockTick = now;
+                    remainingTime--;
+                    if (remainingTime <= 0) {
+                        finishSession(true);
+                    }
+                }
+
+                const cfg = TEMPO_CONFIG[tempoMode];
+                if (now - lastNoteSpawn >= cfg.spawnMs) {
+                    lastNoteSpawn = now;
+                    spawnNote();
+                }
+
+                for (let i = notes.length - 1; i >= 0; i--) {
+                    const n = notes[i];
+                    n.y += n.speed;
+                    if (n.y > hitLineY + 34) {
+                        notes.splice(i, 1);
+                        // Safely letting a spike pass is good; only normal notes cost a life when missed
+                        if (!n.isSpike) {
+                            combo = 0;
+                            misses++;
+                            lives--;
+                            playMissSound();
+                            showJudgement('MISS', '#f87171');
+                            updateHUD();
+                            if (lives <= 0) {
+                                finishSession(false, false);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            sparks.forEach(s => {
+                s.x += s.vx;
+                s.y += s.vy;
+                s.life -= 0.04;
+            });
+            sparks = sparks.filter(s => s.life > 0);
+
+            for (let i = 0; i < 4; i++) {
+                laneFlash[i] = Math.max(0, laneFlash[i] - 0.08);
+            }
+        }
+
+        function render() {
+            ctx.clearRect(0, 0, width, height);
+            const laneWidth = width / 4;
+
+            // Draw 4 Lanes & Tap Flash
+            for (let i = 0; i < 4; i++) {
+                const lx = i * laneWidth;
+                if (laneFlash[i] > 0) {
+                    ctx.save();
+                    ctx.fillStyle = LANE_COLORS[i];
+                    ctx.globalAlpha = laneFlash[i] * 0.22;
+                    ctx.fillRect(lx, 0, laneWidth, height);
+                    ctx.restore();
+                }
+
+                ctx.save();
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(lx, 0);
+                ctx.lineTo(lx, height);
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            // Draw Hit Zone Line
+            ctx.save();
+            ctx.strokeStyle = combo >= 10 ? '#fde047' : 'rgba(244, 114, 182, 0.75)';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(0, hitLineY);
+            ctx.lineTo(width, hitLineY);
+            ctx.stroke();
+
+            // Target Rings on Hit Line
+            for (let i = 0; i < 4; i++) {
+                const cx = i * laneWidth + laneWidth / 2;
+                ctx.beginPath();
+                ctx.arc(cx, hitLineY, 22, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+            ctx.restore();
+
+            // Draw Falling Notes
+            notes.forEach(n => {
+                const cx = n.lane * laneWidth + laneWidth / 2;
+                const laneColor = LANE_COLORS[n.lane];
+                ctx.save();
+                if (n.isSpike) {
+                    // Draw gear/saw-shaped trap matching the exact lane color
+                    const outerR = n.radius * 1.18;
+                    const innerR = n.radius * 0.72;
+                    const teeth = 8;
+
+                    ctx.beginPath();
+                    for (let t = 0; t < teeth * 2; t++) {
+                        const r = (t % 2 === 0) ? outerR : innerR;
+                        const angle = (Math.PI / teeth) * t;
+                        const px = cx + Math.cos(angle) * r;
+                        const py = n.y + Math.sin(angle) * r;
+                        if (t === 0) ctx.moveTo(px, py);
+                        else ctx.lineTo(px, py);
+                    }
+                    ctx.closePath();
+                    ctx.fillStyle = laneColor;
+                    ctx.fill();
+                    ctx.lineWidth = 2.5;
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.stroke();
+
+                    // Center hub hole to emphasize gear/saw silhouette
+                    ctx.beginPath();
+                    ctx.arc(cx, n.y, n.radius * 0.28, 0, Math.PI * 2);
+                    ctx.fillStyle = '#090414';
+                    ctx.fill();
+                } else {
+                    ctx.beginPath();
+                    ctx.arc(cx, n.y, n.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = laneColor;
+                    ctx.fill();
+                    ctx.lineWidth = 3;
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.arc(cx, n.y, n.radius * 0.42, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+                    ctx.fill();
+                }
+                ctx.restore();
+            });
+
+            // Draw Sparks
+            sparks.forEach(s => {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, s.life);
+                ctx.beginPath();
+                ctx.arc(s.x, s.y, 4, 0, Math.PI * 2);
+                ctx.fillStyle = s.color;
+                ctx.fill();
+                ctx.restore();
+            });
+
+            // Top Timer & Lives Pill inside Canvas
+            ctx.save();
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.72)';
+            ctx.beginPath();
+            ctx.roundRect(12, 12, width - 24, 30, 14);
+            ctx.fill();
+
+            ctx.fillStyle = '#f8fafc';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`TIME: ${remainingTime}s`, 22, 27);
+
+            ctx.textAlign = 'right';
+            ctx.fillStyle = lives <= 3 ? '#f87171' : '#34d399';
+            ctx.fillText(`LIFE: ${'♥'.repeat(Math.max(0, lives))}`, width - 22, 27);
+            ctx.restore();
+        }
+
+        function loop() {
+            tick();
+            render();
+            requestAnimationFrame(loop);
+        }
+
+        window.onload = function() {
+            resizeStage();
+            loop();
+        };
+    </script>
+</body>
+</html>
